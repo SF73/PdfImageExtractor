@@ -1,4 +1,5 @@
 from pikepdf import Pdf, PdfImage
+from pikepdf.objects import Name
 import io
 import zipfile
 import os
@@ -11,49 +12,54 @@ def extract(page, **kwargs):
     done = kwargs.get("done")
     if verbose:
         print(f"Page : {page.label}")
+        c = len(page.images.keys())
+        print(f"{c} images found")
     for j, (k,im) in enumerate(page.images.items()):
-        pageNumber = page.index + 1
-        if verbose:
-            print(pageNumber, j)
-        if im.objgen in done:
+        try:
+            pageNumber = page.index + 1
             if verbose:
-                print(f"{pageNumber}-{j} already extracted")
-            continue
-        with io.BytesIO() as f:
-            mask = getattr(im.stream_dict, "SMask", None)
-            
-            pdfimage = PdfImage(im)
-            if mask is None:
-                extension = pdfimage.extract_to(stream=f)
-                name = f'{pageNumber}-{j}{extension}'
+                print(pageNumber, j)
+            if im.objgen in done:
                 if verbose:
-                    print(name)
-                zipFile.writestr(name, f.getvalue())
-            else:
-                maskImage = PdfImage(mask)
-                img_PIL = pdfimage.as_pil_image()
-                mask_PIL = maskImage.as_pil_image()
-                colors = mask_PIL.getcolors()
-                if colors is None or len(colors) == 1:
+                    print(f"{pageNumber}-{j} already extracted")
+                continue
+            with io.BytesIO() as f:
+                mask = getattr(im.stream_dict, "SMask", None)
+                
+                pdfimage = PdfImage(im)
+                if mask is None:
                     extension = pdfimage.extract_to(stream=f)
                     name = f'{pageNumber}-{j}{extension}'
                     if verbose:
                         print(name)
                     zipFile.writestr(name, f.getvalue())
                 else:
-                    img_PIL = img_PIL.convert("RGB")
-                    mask_PIL = mask_PIL.convert("L")
-                    img_PIL.putalpha(mask_PIL)
-                    img_PIL.save(f, format="png")
-                    name = f'{pageNumber}-{j}.png'
-                    if verbose:
-                        print(name)
-                    zipFile.writestr(name, f.getvalue())
-                    
-                img_PIL.close()
-                mask_PIL.close()
-            
-            done.append(im.objgen)
+                    maskImage = PdfImage(mask)
+                    img_PIL = pdfimage.as_pil_image()
+                    mask_PIL = maskImage.as_pil_image()
+                    colors = mask_PIL.getcolors()
+                    if colors is None or len(colors) == 1:
+                        extension = pdfimage.extract_to(stream=f)
+                        name = f'{pageNumber}-{j}{extension}'
+                        if verbose:
+                            print(name)
+                        zipFile.writestr(name, f.getvalue())
+                    else:
+                        img_PIL = img_PIL.convert("RGB")
+                        mask_PIL = mask_PIL.convert("L")
+                        img_PIL.putalpha(mask_PIL)
+                        img_PIL.save(f, format="png")
+                        name = f'{pageNumber}-{j}.png'
+                        if verbose:
+                            print(name)
+                        zipFile.writestr(name, f.getvalue())
+                        
+                    img_PIL.close()
+                    mask_PIL.close()
+                
+                done.append(im.objgen)
+        except:
+            pass
 
 if __name__ == '__main__':
     import argparse
@@ -67,6 +73,17 @@ if __name__ == '__main__':
     
     try:
         file = Pdf.open(args.inputfile)
+        c = 0
+        for obj in file.objects:
+            try:
+                if obj.Type == Name.XObject and obj.Subtype == Name.Image:
+                    print(f"found one XObject")
+                    print(obj.Subtype)
+                    c += 1
+            except:
+                continue
+        print(c)
+
         done = []
         if args.outputfile is None:
             args.outputfile = os.path.splitext(args.inputfile)[0] + ".zip"
